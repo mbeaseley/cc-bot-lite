@@ -15,6 +15,10 @@ interface StatusItem {
 }
 type StreamerStatus = Record<string, StatusItem>;
 
+interface TwitchConfig {
+  headers: Record<string, string>;
+}
+
 export default class TwitchService {
   private readonly twitchClientID = process.env.TWITCH_CLIENT_ID;
   private readonly twitchSecret = process.env.TWITCH_SECRET;
@@ -40,7 +44,7 @@ export default class TwitchService {
           }
         });
 
-      const res = await axios.post<any, Twitch.TwitchToken>(
+      const res = await axios.post<never, Twitch.TwitchToken>(
         `https://id.twitch.tv/oauth2/token?client_id=${this.twitchClientID}&client_secret=${this.twitchSecret}&grant_type=client_credentials`
       );
       this.twitchToken = res.data.access_token;
@@ -52,7 +56,7 @@ export default class TwitchService {
   async checkStreamers(): Promise<void> {
     const promises = Object.keys(this.twitchStreamerStatus).map(
       async (streamer) => {
-        const res = await axios.get<any, Twitch.TwitchSteam>(
+        const res = await axios.get<TwitchConfig, Twitch.TwitchSteam>(
           `https://api.twitch.tv/helix/streams?user_login=${streamer}`,
           {
             headers: {
@@ -154,7 +158,7 @@ export default class TwitchService {
       return Promise.resolve();
     }
 
-    const res = await axios.get<any, Twitch.Users>(
+    const res = await axios.get<TwitchConfig, Twitch.Users>(
       `https://api.twitch.tv/helix/users?${users}`,
       {
         headers: {
