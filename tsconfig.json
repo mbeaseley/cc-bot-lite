@@ -1,18 +1,24 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "ESNext",
+    "module": "NodeNext",
     "outDir": "build",
     "rootDir": "src",
     "strict": true,
-    "moduleResolution": "Node",
+    "moduleResolution": "NodeNext",
     "allowSyntheticDefaultImports": true,
-
     "experimentalDecorators": true,
     "emitDecoratorMetadata": false,
-
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@commands/*": ["./commands/*"],
+      "@events/*": ["./events/*"],
+      "@services/*": ["./services/*"],
+      "@types/*": ["./types/*"]
+    }
   },
+  "include": ["src"],
   "exclude": ["build", "node_modules"]
 }
