@@ -23,8 +23,8 @@ declare global {
       started_at: string;
       language: string;
       thumbnail_url: string;
-      tag_ids: any[];
-      tags: any[];
+      tag_ids: string[];
+      tags: string[];
       is_mature: boolean;
     }
 
