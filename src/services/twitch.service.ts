@@ -3,6 +3,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  Channel,
   EmbedBuilder,
   TextChannel
 } from 'discord.js';
@@ -19,6 +20,13 @@ interface TwitchConfig {
   headers: Record<string, string>;
 }
 
+enum TwitchErrors {
+  Unauthorized = 'Could not find Twitch client id or secret in your environment',
+  MissingDiscordTextChannel = 'Could not find DISCORD_CHANNEL_ID in your environment',
+  NoFoundDiscordTextChannel = 'Could not find channel',
+  InvalidDiscordChannel = 'Could not find valid text channel'
+}
+
 export default class TwitchService {
   private readonly twitchClientID = process.env.TWITCH_CLIENT_ID;
   private readonly twitchSecret = process.env.TWITCH_SECRET;
@@ -26,13 +34,11 @@ export default class TwitchService {
   private readonly discordChannelID = process.env.DISCORD_CHANNEL_ID;
   private twitchStreamerStatus: StreamerStatus = {};
 
-  async init(): Promise<void> {
-    if (!this.twitchClientID || !this.twitchSecret) {
-      throw Error(
-        'Could not find Twitch client id or secret in your environment'
-      );
-    }
-
+  /**
+   * Initialize the Twitch service
+   * @returns {Promise<void>}
+   */
+  public async init(): Promise<void> {
     try {
       Object.keys(process.env)
         .filter((key) => key?.includes('TWITCH_STREAMER_'))
@@ -53,6 +59,10 @@ export default class TwitchService {
     }
   }
 
+  /**
+   * Check the status of the streamers, if they are live or not
+   * @returns {Promise<void>}
+   */
   async checkStreamers(): Promise<void> {
     const promises = Object.keys(this.twitchStreamerStatus).map(
       async (streamer) => {
@@ -88,14 +98,16 @@ export default class TwitchService {
     await this.getUsers();
   }
 
+  /**
+   * Send live notifications to the Discord channel set in the environment
+   * @param bot
+   * @returns {void}
+   */
   public sendLiveNotifications(bot: Client): void {
-    if (!this.discordChannelID) {
-      throw Error('Could not find DISCORD_CHANNEL_ID in your environment');
-    }
+    const channel = this.findLiveChannel(bot);
 
-    const channel = bot.channels.cache.get(this.discordChannelID);
     if (!channel) {
-      throw Error('Could not find channel');
+      return;
     }
 
     Object.keys(this.twitchStreamerStatus).forEach((streamer) => {
@@ -128,8 +140,6 @@ export default class TwitchService {
           ]
         });
 
-        // (channel as TextChannel).send(`${user?.display_name} is live now!`);
-
         const button = new ButtonBuilder()
           .setCustomId(`streamer-${stream.user_name}-cta`)
           .setLabel('Watch stream')
@@ -137,13 +147,41 @@ export default class TwitchService {
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
 
-        (channel as TextChannel).send({
+        channel.send({
           content: `**${user?.display_name}** is live now!`,
           embeds: [message],
           components: [row]
         });
       }
     });
+  }
+
+  public checkTwitchEnvVars(): boolean {
+    if (!this.twitchClientID || !this.twitchSecret) {
+      throw Error(
+        'Could not find Twitch client id or secret in your environment'
+      );
+    }
+
+    return true;
+  }
+
+  public findLiveChannel(bot: Client): TextChannel | undefined {
+    if (!this.discordChannelID) {
+      throw Error(TwitchErrors.MissingDiscordTextChannel);
+    }
+
+    const channel = bot.channels.cache.get(this.discordChannelID);
+
+    if (!channel) {
+      throw Error(TwitchErrors.NoFoundDiscordTextChannel);
+    }
+
+    if (!(channel instanceof TextChannel)) {
+      throw Error(TwitchErrors.InvalidDiscordChannel);
+    }
+
+    return channel;
   }
 
   private async getUsers(): Promise<void> {

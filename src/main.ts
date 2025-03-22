@@ -80,12 +80,16 @@ async function run() {
   await bot.login(process.env.BOT_TOKEN);
 
   const twitchService = new TwitchService();
-  twitchService.init();
+  if (twitchService.checkTwitchEnvVars()) {
+    twitchService.init();
 
-  setInterval(async () => {
-    await twitchService.checkStreamers();
-    twitchService.sendLiveNotifications(bot);
-  }, 60000);
+    setInterval(async () => {
+      if (twitchService.findLiveChannel(bot)) {
+        await twitchService.checkStreamers();
+        twitchService.sendLiveNotifications(bot);
+      }
+    }, 60000);
+  }
 }
 
 void run();
