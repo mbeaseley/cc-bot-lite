@@ -3,7 +3,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  Channel,
   EmbedBuilder,
   TextChannel
 } from 'discord.js';
@@ -129,15 +128,26 @@ export default class TwitchService {
               }
             : undefined,
           image: {
-            url: `https://static-cdn.jtvnw.net/previews-ttv/live_user_${stream.user_name}-1280x720.jpg`
+            url: `https://static-cdn.jtvnw.net/previews-ttv/live_user_${stream.user_name.toLowerCase()}-1280x720.jpg`
           },
           fields: [
             {
               name: 'Game',
-              value: stream?.game_name,
+              value: stream?.game_name || 'Just Chatting', // Fallback is nice practice
+              inline: true
+            },
+            {
+              name: 'Started',
+              value: `<t:${Math.floor(new Date(stream.started_at).getTime() / 1000)}:R>`,
               inline: true
             }
-          ]
+          ],
+          timestamp: new Date().toISOString(),
+          footer: {
+            text: 'Twitch',
+            iconURL:
+              'https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png'
+          }
         });
 
         const button = new ButtonBuilder()
@@ -148,7 +158,7 @@ export default class TwitchService {
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
 
         channel.send({
-          content: `**${user?.display_name}** is live now!`,
+          content: `Hey @everyone, **${user?.display_name}** is live now!`,
           embeds: [message],
           components: [row]
         });
