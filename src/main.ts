@@ -9,9 +9,6 @@ import TwitchService from './services/twitch.service.js';
 dotenv.config();
 
 export const bot = new Client({
-  // To use only guild command
-  // botGuilds: [(client) => client.guilds.cache.map((guild) => guild.id)],
-
   // Discord intents
   intents: [
     IntentsBitField.Flags.Guilds,
@@ -39,35 +36,33 @@ export const bot = new Client({
   }
 });
 
-bot.once('ready', async () => {
-  // Make sure all guilds are cached
-  // await bot.guilds.fetch();
-
+/**
+ * Bot ready event
+ */
+bot.once('clientReady', async () => {
   // Synchronize applications commands with Discord
-  void bot.initApplicationCommands();
-
-  // To clear all guild commands, uncomment this line,
-  // This is useful when moving from guild commands to global commands
-  // It must only be executed once
-  //
-  // await bot.clearApplicationCommands(...bot.guilds.cache.map((g) => g.id));
-
+  await bot.initApplicationCommands();
   console.log('Bot started');
 });
 
+/**
+ * Handle interaction and message create events
+ */
 bot.on('interactionCreate', (interaction: Interaction) => {
   bot.executeInteraction(interaction);
 });
 
+/**
+ * Handle message create events
+ */
 bot.on('messageCreate', (message: Message) => {
   void bot.executeCommand(message);
 });
 
+/**
+ * Main function to run the bot
+ */
 async function run() {
-  // The following syntax should be used in the commonjs environment
-  //
-  // await importx(__dirname + "/{events,commands}/**/*.{ts,js}");
-
   // The following syntax should be used in the ECMAScript environment
   await importx(`${dirname(import.meta.url)}/{events,commands}/**/*.{ts,js}`);
 
