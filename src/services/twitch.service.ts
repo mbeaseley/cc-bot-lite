@@ -1,225 +1,187 @@
 import axios from 'axios';
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder,
-  TextChannel
-} from 'discord.js';
+import { EmbedBuilder, TextChannel } from 'discord.js';
 import { Client } from 'discordx';
 
-interface StatusItem {
+const TWITCH_OAUTH_TOKEN = 'https://id.twitch.tv/oauth2/token';
+const TWITCH_HELIX = 'https://api.twitch.tv/helix';
+const LIVE_PREVIEW_BASE = 'https://static-cdn.jtvnw.net/previews-ttv/live_user_';
+const TWITCH_FOOTER_ICON = 'https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png';
+/** Twitch brand purple (decimal) */
+const EMBED_COLOR = 6570405;
+
+interface StreamerState {
   user?: Twitch.User;
   live: boolean;
   stream?: Twitch.Channel;
 }
-type StreamerStatus = Record<string, StatusItem>;
 
-interface TwitchConfig {
-  headers: Record<string, string>;
+type StreamerStatusMap = Record<string, StreamerState>;
+
+interface HelixStreamsResponse {
+  data: Twitch.Channel[];
 }
 
 enum TwitchErrors {
-  Unauthorized = 'Could not find Twitch client id or secret in your environment',
+  MissingCredentials = 'Could not find Twitch client id or secret in your environment',
   MissingDiscordTextChannel = 'Could not find DISCORD_CHANNEL_ID in your environment',
-  NoFoundDiscordTextChannel = 'Could not find channel',
-  InvalidDiscordChannel = 'Could not find valid text channel'
+  ChannelNotInCache = 'Could not find channel',
+  ChannelNotText = 'Could not find valid text channel'
 }
 
 export default class TwitchService {
-  private readonly twitchClientID = process.env.TWITCH_CLIENT_ID;
-  private readonly twitchSecret = process.env.TWITCH_SECRET;
-  private twitchToken = '';
-  private readonly discordChannelID = process.env.DISCORD_CHANNEL_ID;
-  private twitchStreamerStatus: StreamerStatus = {};
+  private readonly clientId = process.env.TWITCH_CLIENT_ID;
+  private readonly clientSecret = process.env.TWITCH_SECRET;
+  private readonly discordChannelId = process.env.DISCORD_CHANNEL_ID;
+  private token = '';
+  private streamers: StreamerStatusMap = {};
 
-  /**
-   * Initialize the Twitch service
-   * @returns {Promise<void>}
-   */
   public async init(): Promise<void> {
-    try {
-      Object.keys(process.env)
-        .filter((key) => key?.includes('TWITCH_STREAMER_'))
-        .forEach((name) => {
-          if (process.env[name]) {
-            this.twitchStreamerStatus[process.env[name]] = {
-              live: false
-            };
-          }
-        });
-
-      const res = await axios.post<never, Twitch.TwitchToken>(
-        `https://id.twitch.tv/oauth2/token?client_id=${this.twitchClientID}&client_secret=${this.twitchSecret}&grant_type=client_credentials`
-      );
-      this.twitchToken = res.data.access_token;
-    } catch (error) {
-      throw Error(String(error));
+    const clientId = this.clientId;
+    const clientSecret = this.clientSecret;
+    if (!clientId || !clientSecret) {
+      throw Error(TwitchErrors.MissingCredentials);
     }
-  }
 
-  /**
-   * Check the status of the streamers, if they are live or not
-   * @returns {Promise<void>}
-   */
-  async checkStreamers(): Promise<void> {
-    const promises = Object.keys(this.twitchStreamerStatus).map(
-      async (streamer) => {
-        const res = await axios.get<TwitchConfig, Twitch.TwitchSteam>(
-          `https://api.twitch.tv/helix/streams?user_login=${streamer}`,
-          {
-            headers: {
-              'Client-ID': this.twitchClientID,
-              Authorization: `Bearer ${this.twitchToken}`
-            }
-          }
-        );
+    for (const key of Object.keys(process.env)) {
+      if (!key.includes('TWITCH_STREAMER_')) continue;
+      const login = process.env[key];
+      if (login) this.streamers[login] = { live: false };
+    }
 
-        if (res.data.data.length > 0) {
-          if (!this.twitchStreamerStatus[streamer].live) {
-            this.twitchStreamerStatus[streamer] = {
-              user: {
-                id: res.data.data[0].user_id
-              },
-              live: true,
-              stream: res.data.data[0]
-            };
-          } else {
-            this.twitchStreamerStatus[streamer].stream = undefined;
-          }
-        } else {
-          this.twitchStreamerStatus[streamer].live = false;
-        }
-      }
+    const { data } = await axios.post<{ access_token: string }>(
+      `${TWITCH_OAUTH_TOKEN}?client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`
     );
-
-    await Promise.all(promises);
-    await this.getUsers();
+    this.token = data.access_token;
   }
 
-  /**
-   * Send live notifications to the Discord channel set in the environment
-   * @param bot
-   * @returns {void}
-   */
+  async checkStreamers(): Promise<void> {
+    await Promise.all(Object.keys(this.streamers).map((login) => this.refreshStreamer(login)));
+    await this.hydrateUsers();
+  }
+
   public sendLiveNotifications(bot: Client): void {
-    const channel = this.findLiveChannel(bot);
+    const channel = this.resolveAnnounceChannel(bot);
 
-    if (!channel) {
-      return;
+    for (const state of Object.values(this.streamers)) {
+      const { user, live, stream } = state;
+      if (!live || !stream || !user) continue;
+
+      const displayName = user.display_name ?? user.login ?? 'Streamer';
+      console.log('Sending notification for', displayName);
+
+      void channel.send({
+        content: `Hey @everyone, **${displayName}** is live now!`,
+        embeds: [this.buildLiveEmbed(stream, user)],
+        components: []
+      });
     }
-
-    Object.keys(this.twitchStreamerStatus).forEach((streamer) => {
-      const { user, live, stream } = this.twitchStreamerStatus[streamer];
-
-      if (live && stream && user) {
-        console.log('Sending notification for', user.display_name);
-        const message = new EmbedBuilder({
-          title: stream?.title,
-          author: {
-            name: stream?.user_name,
-            url: `https://www.twitch.tv/${stream?.user_name}`,
-            icon_url: user?.profile_image_url
-          },
-          color: 6570405,
-          thumbnail: user?.profile_image_url
-            ? {
-                url: user.profile_image_url
-              }
-            : undefined,
-          image: {
-            url: `https://static-cdn.jtvnw.net/previews-ttv/live_user_${stream.user_name.toLowerCase()}-1280x720.jpg`
-          },
-          fields: [
-            {
-              name: 'Game',
-              value: stream?.game_name || 'Just Chatting', // Fallback is nice practice
-              inline: true
-            },
-            {
-              name: 'Started',
-              value: `<t:${Math.floor(new Date(stream.started_at).getTime() / 1000)}:R>`,
-              inline: true
-            }
-          ],
-          timestamp: new Date().toISOString(),
-          footer: {
-            text: 'Twitch',
-            iconURL:
-              'https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png'
-          }
-        });
-
-        const button = new ButtonBuilder()
-          .setCustomId(`streamer-${stream.user_name}-cta`)
-          .setLabel('Watch stream')
-          .setStyle(ButtonStyle.Secondary);
-
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
-
-        channel.send({
-          content: `Hey @everyone, **${user?.display_name}** is live now!`,
-          embeds: [message],
-          components: [row]
-        });
-      }
-    });
   }
 
   public checkTwitchEnvVars(): boolean {
-    if (!this.twitchClientID || !this.twitchSecret) {
-      throw Error(
-        'Could not find Twitch client id or secret in your environment'
-      );
+    if (!this.clientId || !this.clientSecret) {
+      throw Error(TwitchErrors.MissingCredentials);
     }
-
     return true;
   }
 
-  public findLiveChannel(bot: Client): TextChannel | undefined {
-    if (!this.discordChannelID) {
+  public findLiveChannel(bot: Client): TextChannel {
+    return this.resolveAnnounceChannel(bot);
+  }
+
+  private helixHeaders(): Record<string, string> {
+    const id = this.clientId;
+    if (!id) throw Error(TwitchErrors.MissingCredentials);
+    return {
+      'Client-ID': id,
+      Authorization: `Bearer ${this.token}`
+    };
+  }
+
+  private resolveAnnounceChannel(bot: Client): TextChannel {
+    if (!this.discordChannelId) {
       throw Error(TwitchErrors.MissingDiscordTextChannel);
     }
 
-    const channel = bot.channels.cache.get(this.discordChannelID);
-
-    if (!channel) {
-      throw Error(TwitchErrors.NoFoundDiscordTextChannel);
-    }
-
+    const channel = bot.channels.cache.get(this.discordChannelId);
+    if (!channel) throw Error(TwitchErrors.ChannelNotInCache);
     if (!(channel instanceof TextChannel)) {
-      throw Error(TwitchErrors.InvalidDiscordChannel);
+      throw Error(TwitchErrors.ChannelNotText);
     }
-
     return channel;
   }
 
-  private async getUsers(): Promise<void> {
-    const users = Object.keys(this.twitchStreamerStatus)
-      .filter(
-        (streamer) => this.twitchStreamerStatus[streamer].user?.id !== undefined
-      )
-      .map((streamer) => `id=${this.twitchStreamerStatus[streamer].user?.id}`)
-      .join('&');
-
-    if (!users) {
-      return Promise.resolve();
-    }
-
-    const res = await axios.get<TwitchConfig, Twitch.Users>(
-      `https://api.twitch.tv/helix/users?${users}`,
-      {
-        headers: {
-          'Client-ID': this.twitchClientID,
-          Authorization: `Bearer ${this.twitchToken}`
-        }
-      }
-    );
-
-    res.data.data.forEach((user) => {
-      if (user?.login) {
-        this.twitchStreamerStatus[user.login].user = user;
-      }
+  private async refreshStreamer(login: string): Promise<void> {
+    const { data } = await axios.get<HelixStreamsResponse>(`${TWITCH_HELIX}/streams`, {
+      params: { user_login: login },
+      headers: this.helixHeaders()
     });
+
+    const stream = data.data.length > 0 ? data.data[0] : undefined;
+    const entry = this.streamers[login];
+
+    if (stream !== undefined) {
+      if (!entry.live) {
+        this.streamers[login] = {
+          user: { id: stream.user_id },
+          live: true,
+          stream
+        };
+      } else {
+        entry.stream = undefined;
+      }
+    } else {
+      entry.live = false;
+    }
+  }
+
+  private buildLiveEmbed(stream: Twitch.Channel, user: Twitch.User): EmbedBuilder {
+    const login = stream.user_name;
+    const profileUrl = user.profile_image_url;
+
+    return new EmbedBuilder({
+      title: stream.title,
+      author: {
+        name: login,
+        url: `https://www.twitch.tv/${login}`,
+        icon_url: profileUrl
+      },
+      color: EMBED_COLOR,
+      thumbnail: profileUrl ? { url: profileUrl } : undefined,
+      image: {
+        url: `${LIVE_PREVIEW_BASE}${login.toLowerCase()}-1280x720.jpg`
+      },
+      url: `https://www.twitch.tv/${login}`,
+      fields: [
+        {
+          name: 'Game',
+          value: stream.game_name || 'Just Chatting',
+          inline: true
+        },
+        {
+          name: 'Started',
+          value: `<t:${String(Math.floor(new Date(stream.started_at).getTime() / 1000))}:R>`,
+          inline: true
+        }
+      ],
+      timestamp: new Date().toISOString(),
+      footer: { text: 'Twitch', iconURL: TWITCH_FOOTER_ICON }
+    });
+  }
+
+  private async hydrateUsers(): Promise<void> {
+    const ids = Object.values(this.streamers)
+      .map((s) => s.user?.id)
+      .filter((id): id is string => Boolean(id));
+
+    if (ids.length === 0) return;
+
+    const qs = ids.map((id) => `id=${encodeURIComponent(id)}`).join('&');
+    const { data } = await axios.get<{ data: Twitch.User[] }>(`${TWITCH_HELIX}/users?${qs}`, { headers: this.helixHeaders() });
+
+    for (const user of data.data) {
+      if (user.login) {
+        this.streamers[user.login].user = user;
+      }
+    }
   }
 }

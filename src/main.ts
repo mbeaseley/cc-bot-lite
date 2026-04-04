@@ -39,17 +39,18 @@ export const bot = new Client({
 /**
  * Bot ready event
  */
-bot.once('clientReady', async () => {
-  // Synchronize applications commands with Discord
-  await bot.initApplicationCommands();
-  console.log('Bot started');
+bot.once('clientReady', () => {
+  void (async () => {
+    await bot.initApplicationCommands();
+    console.log('Bot started');
+  })();
 });
 
 /**
  * Handle interaction and message create events
  */
 bot.on('interactionCreate', (interaction: Interaction) => {
-  bot.executeInteraction(interaction);
+  void bot.executeInteraction(interaction);
 });
 
 /**
@@ -76,13 +77,18 @@ async function run() {
 
   const twitchService = new TwitchService();
   if (twitchService.checkTwitchEnvVars()) {
-    twitchService.init();
+    await twitchService.init();
 
-    setInterval(async () => {
-      if (twitchService.findLiveChannel(bot)) {
-        await twitchService.checkStreamers();
-        twitchService.sendLiveNotifications(bot);
-      }
+    setInterval(() => {
+      void (async () => {
+        try {
+          twitchService.findLiveChannel(bot);
+          await twitchService.checkStreamers();
+          twitchService.sendLiveNotifications(bot);
+        } catch (err) {
+          console.error('[twitch poll]', err);
+        }
+      })();
     }, 60000);
   }
 }
