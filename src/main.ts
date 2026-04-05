@@ -76,21 +76,19 @@ async function run() {
   await bot.login(process.env.BOT_TOKEN);
 
   const twitchService = new TwitchService();
-  if (twitchService.checkTwitchEnvVars()) {
-    await twitchService.init();
+  await twitchService.init();
 
-    setInterval(() => {
-      void (async () => {
-        try {
-          twitchService.findLiveChannel(bot);
-          await twitchService.checkStreamers();
-          twitchService.sendLiveNotifications(bot);
-        } catch (err) {
-          console.error('[twitch poll]', err);
-        }
-      })();
-    }, 60000);
-  }
+  setInterval(() => {
+    void (async () => {
+      try {
+        twitchService.findLiveChannel(bot);
+        await twitchService.checkStreamers();
+        await twitchService.sendLiveNotifications(bot);
+      } catch (err) {
+        console.error('[twitch poll]', err);
+      }
+    })();
+  }, 10000);
 }
 
 void run();

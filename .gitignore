@@ -9,3 +9,6 @@ yarn.lock
 # folders
 build
 node_modules
+
+# runtime twitch live dedupe (Helix stream ids)
+data/twitch-announcements.json

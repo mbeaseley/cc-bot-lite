@@ -1,9 +1,14 @@
-import { CommandInteraction, SlashCommandBuilder, SlashCommandNumberOption, TextChannel } from 'discord.js';
+import {
+  CommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+  SlashCommandNumberOption,
+  TextChannel
+} from 'discord.js';
 import { Discord, Slash, SlashOption } from 'discordx';
 
 const command = new SlashCommandBuilder().setName('purge').setDescription('moderator command to delete up to 100 messages!');
 
-// eslint-disable-next-line no-useless-assignment -- option is read by @SlashOption(option)
 const option = new SlashCommandNumberOption().setName('messages').setDescription('Number of messages to delete').setRequired(true);
 
 @Discord()
@@ -27,7 +32,7 @@ export class Purge {
     const channel = interaction.channel as TextChannel;
 
     // Ephemeral so the "thinking" ack is not a normal channel message that bulkDelete can remove.
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
       await channel.bulkDelete(messages, true);
@@ -46,7 +51,7 @@ export class Purge {
     try {
       await interaction.editReply({ content });
     } catch {
-      await interaction.followUp({ content, ephemeral: true }).catch(() => undefined);
+      await interaction.followUp({ content, flags: MessageFlags.Ephemeral }).catch(() => undefined);
     }
   }
 }
