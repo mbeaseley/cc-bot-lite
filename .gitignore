@@ -12,3 +12,4 @@ node_modules
 
 # runtime twitch live dedupe (Helix stream ids)
 data/twitch-announcements.json
+data/twitch-streamers.json

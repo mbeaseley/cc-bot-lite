@@ -72,10 +72,12 @@ async function run() {
     throw Error('Could not find BOT_TOKEN in your environment');
   }
 
+  const twitchService = new TwitchService();
+  bot.twitchService = twitchService;
+
   // Log in with your bot token
   await bot.login(process.env.BOT_TOKEN);
 
-  const twitchService = new TwitchService();
   await twitchService.init();
 
   setInterval(() => {

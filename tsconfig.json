@@ -14,10 +14,10 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@commands/*": ["./commands/*"],
-      "@events/*": ["./events/*"],
-      "@services/*": ["./services/*"],
-      "@types/*": ["./types/*"]
+      "@commands/*": ["./src/commands/*"],
+      "@events/*": ["./src/events/*"],
+      "@services/*": ["./src/services/*"],
+      "@types/*": ["./src/types/*"]
     }
   },
   "include": ["src"],
